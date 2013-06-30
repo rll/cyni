@@ -33,3 +33,9 @@ nosetests.xml
 .mr.developer.cfg
 .project
 .pydevproject
+
+# Cython-generated code
+cyni2.cpp
+
+# Generated config
+config.pxi
