@@ -13,7 +13,7 @@ class build_ext_with_config(build_ext):
                             fd.write('DEF %s = %d\n' % (k.upper(), int(v)))
         build_ext.build_extensions(self)
         os.remove(filename)
-        cppfilename = os.path.join(os.path.dirname(__file__), 'cyni2.cpp')
+        cppfilename = os.path.join(os.path.dirname(__file__), 'cyni.cpp')
         os.remove(cppfilename)
 
 c_options = { 
@@ -22,8 +22,8 @@ c_options = {
 
 ext_modules = [
     Extension(
-        "cyni2", 
-        ["cyni2.pyx"], 
+        "cyni", 
+        ["cyni.pyx"], 
         language="c++",
         include_dirs=['/opt/OpenNI2/Include', numpy.get_include()],
         libraries=['OpenNI2'],
@@ -32,7 +32,8 @@ ext_modules = [
     )
 ]
 setup(
-  name = 'cyni2',
+  name = 'cyni',
+  version='0.0.1',
   cmdclass = {'build_ext': build_ext_with_config},
   ext_modules = ext_modules
 )

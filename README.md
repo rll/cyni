@@ -1,4 +1,4 @@
-cyni2
+cyni
 =====
 
 Cython-based wrapper for OpenNI2

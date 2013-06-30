@@ -1,13 +1,9 @@
-import cyni2
+import cyni
 import numpy as np
 import Image
 
-def depthMapToImage(image):
-    return np.uint8(image / (np.max(image)*1.0/255))
-
-cyni2.initialize()
-deviceList = cyni2.enumerateDevices()
-device = cyni2.Device(deviceList[0]['uri'])
+cyni.initialize()
+device = cyni.getAnyDevice()
 device.open()
 depthStream = device.createStream("depth", fps=30)
 colorStream = device.createStream("color", fps=30)
@@ -16,4 +12,4 @@ colorStream.start()
 depthFrame = depthStream.readFrame()
 colorFrame = colorStream.readFrame()
 Image.fromarray(colorFrame.data).save("color.png")
-Image.fromarray(depthMapToImage(depthFrame.data)).save("depth.png")
+Image.fromarray(cyni.depthMapToImage(depthFrame.data)).save("depth.png")
