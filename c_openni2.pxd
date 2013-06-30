@@ -95,6 +95,7 @@ cdef extern from "OpenNI.h" namespace "openni":
         Status setProperty(int propertyId, const void* data, int dataSize)
         ImageRegistrationMode getImageRegistrationMode() const
         Status setImageRegistrationMode(ImageRegistrationMode mode)
+        bool isImageRegistrationModeSupported(ImageRegistrationMode mode) const
         bool isValid() const
         Status setDepthColorSyncEnabled(bool isEnabled)
         bool getDepthColorSyncEnabled()

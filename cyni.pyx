@@ -25,7 +25,6 @@ def initialize():
 def enumerateDevices():
   cdef c_openni2.Array[c_openni2.DeviceInfo] c_devices 
   c_openni2.enumerateDevices(&c_devices)
-  print "number of devices: ", c_devices.getSize()
   devices = []
   for i in range(c_devices.getSize()):
     d = {}
@@ -67,6 +66,28 @@ cdef class Device(object):
   
   def getDepthColorSyncEnabled(self):
     return self._device.getDepthColorSyncEnabled()
+
+  def setImageRegistrationMode(self, mode):
+      if mode == "off":
+          if self._device.isImageRegistrationModeSupported(c_openni2.IMAGE_REGISTRATION_OFF):
+              status = self._device.setImageRegistrationMode(c_openni2.IMAGE_REGISTRATION_OFF)
+          else:
+              warning("ImageRegistrationMode %s isn't supported." % mode)
+              return False
+      elif mode == "depth_to_color":
+          if self._device.isImageRegistrationModeSupported(c_openni2.IMAGE_REGISTRATION_DEPTH_TO_COLOR):
+              status = self._device.setImageRegistrationMode(c_openni2.IMAGE_REGISTRATION_DEPTH_TO_COLOR)
+          else:
+              warning("ImageRegistrationMode %s isn't supported." % mode)
+              return False
+      return status == c_openni2.STATUS_OK
+
+  def getImageRegistrationMode(self):
+      mode = self._device.getImageRegistrationMode()
+      if mode == c_openni2.IMAGE_REGISTRATION_OFF:
+          return "off"
+      elif mode == c_openni2.IMAGE_REGISTRATION_DEPTH_TO_COLOR:
+          return "depth_to_color"
  
   def createStream(self, streamType, x=None, y=None, fps=None, format=None):
     stream = VideoStream() 
@@ -94,9 +115,11 @@ cdef class VideoStream(object):
   cdef c_openni2.VideoStream _stream
   cdef string _streamType
   cdef string _pixelFormat
-  cdef int _resX
-  cdef int _resY
-  cdef int _frameSize
+  cdef int frameSize
+
+  cdef readonly int frameWidth
+  cdef readonly int frameHeight
+  cdef readonly int fps
 
   def __dealloc__(self):
     self._stream.stop()
@@ -115,8 +138,8 @@ cdef class VideoStream(object):
   cdef create(self, 
               c_openni2.Device& _device, 
               streamType, 
-              x,
-              y,
+              frameWidth,
+              frameHeight,
               fps,
               pixelFormat):
     self._streamType = streamType
@@ -140,11 +163,11 @@ cdef class VideoStream(object):
 
     for i in range(_modes.getSize()):
       mode = drf(_modes)[i]
-      if x is not None and x != mode.getResolutionX():
+      if frameWidth is not None and frameWidth != mode.getResolutionX():
         continue
       else:
         chosenX = mode.getResolutionX()
-      if y is not None and y != mode.getResolutionY():
+      if frameHeight is not None and frameHeight != mode.getResolutionY():
         continue
       if fps is not None and fps != mode.getFps():
         continue
@@ -166,10 +189,13 @@ cdef class VideoStream(object):
       elif pixelFormat == "gray16": 
         pixelSize = sizeof(c_openni2.Grayscale16Pixel)
 
-      self._resX = mode.getResolutionX()
-      self._resY = mode.getResolutionY()
       self._pixelFormat = pixelFormat
-      self._frameSize = self._resX * self._resY * pixelSize
+
+      self.frameWidth = mode.getResolutionX()
+      self.frameHeight = mode.getResolutionY()
+      self.fps = mode.getFps()
+
+      self.frameSize = self.frameWidth * self.frameHeight * pixelSize
 
       self._stream.setVideoMode(mode)
 
@@ -200,7 +226,7 @@ cdef class VideoStream(object):
       error("Invalid frame read.")
       return None
 
-    if _frame.getDataSize() != self._frameSize:
+    if _frame.getDataSize() != self.frameSize:
       error("Read frame with wrong size. Got height: %d, width: %d" 
             % (_frame.getHeight(), _frame.getWidth()))
       return None
@@ -223,10 +249,10 @@ cdef class VideoStream(object):
   cdef convertRGBFrame(self, c_openni2.VideoFrameRef _frame):
     _imageData = <const c_openni2.RGB888Pixel*> _frame.getData()
     cdef np.ndarray[np.uint8_t, ndim=3] image 
-    image = np.empty((self._resY, self._resX, 3), dtype=np.uint8)
-    for y in range(self._resY):
-      for x in range(self._resX):
-        _pixel = <const c_openni2.RGB888Pixel> _imageData[y*self._resX + x]
+    image = np.empty((self.frameHeight, self.frameWidth, 3), dtype=np.uint8)
+    for y in range(self.frameHeight):
+      for x in range(self.frameWidth):
+        _pixel = <const c_openni2.RGB888Pixel> _imageData[y*self.frameWidth + x]
         image[y,x,0] = _pixel.r
         image[y,x,1] = _pixel.g
         image[y,x,2] = _pixel.b
@@ -235,10 +261,10 @@ cdef class VideoStream(object):
   cdef convertDepthFrame(self, c_openni2.VideoFrameRef _frame):
     _imageData = <const c_openni2.DepthPixel*> _frame.getData()
     cdef np.ndarray[np.uint16_t, ndim=2] image 
-    image = np.empty((self._resY, self._resX), dtype=np.uint16)
-    for y in range(self._resY):
-      for x in range(self._resX):
-        image[y,x] = _imageData[y*self._resX + x]
+    image = np.empty((self.frameHeight, self.frameWidth), dtype=np.uint16)
+    for y in range(self.frameHeight):
+      for x in range(self.frameWidth):
+        image[y,x] = _imageData[y*self.frameWidth + x]
     return image
 
   def stop(self):
