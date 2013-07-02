@@ -240,7 +240,7 @@ cdef class VideoStream(object):
         if _frame.getDataSize() != self.frameSize:
             error("Read frame with wrong size. Got height: %d, width: %d"
                   % (_frame.getHeight(), _frame.getWidth()))
-        return None
+            return None
 
         metadata = {}
         metadata["timestamp"] = _frame.getTimestamp()
