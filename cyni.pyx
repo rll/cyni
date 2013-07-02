@@ -116,12 +116,14 @@ cdef class Device(object):
         return <bytes> serial
 
     def getSupportedVideoModes(self, sensorType):
+        cdef const c_openni2.SensorInfo* _info
         if sensorType == "color":
-            _info = _device.getSensorInfo(c_openni2.SENSOR_COLOR)
+            _info = self._device.getSensorInfo(c_openni2.SENSOR_COLOR)
         elif sensorType == "depth":
-            _info = _device.getSensorInfo(c_openni2.SENSOR_DEPTH)
+            _info = self._device.getSensorInfo(c_openni2.SENSOR_DEPTH)
+        else:
+            return []
         cdef const c_openni2.Array[c_openni2.VideoMode]* _modes
-        cdef const c_openni2.SensorInfo* _info = &self._stream.getSensorInfo()
         _modes = &(_info.getSupportedVideoModes())
         modes = []
         for i in range(_modes.getSize()):
