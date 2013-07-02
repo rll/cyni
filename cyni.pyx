@@ -102,12 +102,12 @@ cdef class Device(object):
         elif mode == c_openni2.IMAGE_REGISTRATION_DEPTH_TO_COLOR:
             return "depth_to_color"
 
-    def createStream(self, streamType, x=None, y=None, fps=None, format=None):
+    def createStream(self, streamType, width=None, height=None, fps=None, format=None):
         if not self._device.isValid():
             error("Must open() the device before creating any streams.")
 
         stream = VideoStream()
-        stream.create(self._device, streamType, x, y, fps, format)
+        stream.create(self._device, streamType, width, height, fps, format)
         self._streams.push_back(&(stream._stream))
         return stream
 
