@@ -9,6 +9,15 @@ cimport numpy as np
 import numpy as np
 import sys
 
+pixelFormats = {
+    "rgb": c_openni2.PIXEL_FORMAT_RGB888,
+    "yuv422": c_openni2.PIXEL_FORMAT_YUV422,
+    "gray16": c_openni2.PIXEL_FORMAT_GRAY16,
+    "depth1mm": c_openni2.PIXEL_FORMAT_DEPTH_1_MM,
+    "depth100um": c_openni2.PIXEL_FORMAT_DEPTH_100_UM,
+}
+
+pixelFormatsReverse = dict([[v, k] for k, v in pixelFormats.items()])
 
 class OpenNIException(Exception):
     pass
@@ -40,6 +49,7 @@ def enumerateDevices():
         d['usbProductId'] = c_devices[i].getUsbProductId()
         devices.append(d)
     return devices
+
 
 cdef class Device(object):
 
@@ -105,6 +115,19 @@ cdef class Device(object):
         self._device.getProperty(propId, &serial, &size)
         return <bytes> serial
 
+    def getSupportedVideoModes(self):
+        cdef const c_openni2.Array[c_openni2.VideoMode]* _modes
+        _modes = &(_info.getSupportedVideoModes())
+        modes = []
+        for i in range(_modes.getSize()):
+            mode = drf(_modes)[i]
+            pixelFormat = pixelFormatsReverse.get(mode.getPixelFormat(), "N/A")
+            modes.append({"width": mode.getResolutionX(),
+                          "height": mode.getResolutionY(),
+                          "fps": mode.getFps(),
+                          "pixelFormat": pixelFormat})
+        return modes
+
     def close(self):
         if self._device.isValid():
             self._device.close()
@@ -115,6 +138,7 @@ class Frame(object):
         self.data = data
         self.metadata = metadata
         self.sensorType = sensorType
+
 
 cdef class VideoStream(object):
     cdef c_openni2.VideoStream _stream
@@ -129,16 +153,6 @@ cdef class VideoStream(object):
     def __dealloc__(self):
         self._stream.stop()
         self._stream.destroy()
-
-    pixelFormats = {
-        "rgb": c_openni2.PIXEL_FORMAT_RGB888,
-        "yuv422": c_openni2.PIXEL_FORMAT_YUV422,
-        "gray16": c_openni2.PIXEL_FORMAT_GRAY16,
-        "depth1mm": c_openni2.PIXEL_FORMAT_DEPTH_1_MM,
-        "depth100um": c_openni2.PIXEL_FORMAT_DEPTH_100_UM,
-    }
-
-    pixelFormatsReverse = dict([[v, k] for k, v in pixelFormats.items()])
 
     cdef create(self,
                 c_openni2.Device& _device,
@@ -183,11 +197,11 @@ cdef class VideoStream(object):
             if fps is not None and fps != mode.getFps():
                 continue
             if (pixelFormat is not None and
-                VideoStream.pixelFormats[pixelFormat] != mode.getPixelFormat()):
+                pixelFormats[pixelFormat] != mode.getPixelFormat()):
                 continue
 
             # Set the pixel format in case it was None
-            pixelFormat = VideoStream.pixelFormatsReverse[mode.getPixelFormat()]
+            pixelFormat = pixelFormatsReverse[mode.getPixelFormat()]
 
             if pixelFormat == "rgb":
                 pixelSize = sizeof(c_openni2.RGB888Pixel)
