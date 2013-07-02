@@ -285,6 +285,7 @@ cdef class VideoStream(object):
         _imageData = <const c_openni2.RGB888Pixel*> _frame.getData()
         cdef np.ndarray[np.uint8_t, ndim=3] image
         image = np.empty((self.height, self.width, 3), dtype=np.uint8)
+        cdef x, y
         for y in range(self.height):
             for x in range(self.width):
                 index = y*self.width + x
@@ -298,6 +299,7 @@ cdef class VideoStream(object):
         _imageData = <const c_openni2.DepthPixel*> _frame.getData()
         cdef np.ndarray[np.uint16_t, ndim=2] image
         image = np.empty((self.height, self.width), dtype=np.uint16)
+        cdef x, y
         for y in range(self.height):
             for x in range(self.width):
                 image[y, x] = _imageData[y*self.width + x]
