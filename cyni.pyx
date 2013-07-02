@@ -103,6 +103,9 @@ cdef class Device(object):
             return "depth_to_color"
 
     def createStream(self, streamType, x=None, y=None, fps=None, format=None):
+        if not self._device.isValid():
+            error("Must open() the device before creating any streams.")
+
         stream = VideoStream()
         stream.create(self._device, streamType, x, y, fps, format)
         self._streams.push_back(&(stream._stream))
