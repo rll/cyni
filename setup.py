@@ -1,3 +1,4 @@
+import sys
 import os
 import os.path
 from distutils.core import setup
@@ -7,8 +8,20 @@ import numpy
 
 openni2_include = os.getenv('OPENNI2_INCLUDE')
 openni2_lib = os.getenv('OPENNI2_REDIST')
+
+if openni2_include is None or openni2_lib is None:
+    print """
+    Please make sure OPENNI2_INCLUDE and OPENNI2_REDIST are set. You can
+    source the OpenNIDevEnvironment that the OpenNI2 installer generates to set
+    these, or you can set them manually. To keep these environment variables
+    when running with sudo, you can use sudo -E python setup.py install.
+    """
+    sys.exit(1)
+
 has_emitter_control = os.getenv('OPENNI2_HAS_EMITTER_CONTROL', 0)
 has_emitter_control = bool(has_emitter_control)
+if has_emitter_control:
+    print "Using emitter control API"
 
 class build_ext_with_config(build_ext):
     def build_extensions(self):
