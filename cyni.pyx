@@ -58,10 +58,13 @@ cdef class Device(object):
     cdef vector[c_openni2.VideoStream*] _streams
 
     def __dealloc__(self):
-        for _stream in self._streams:
-            _stream.stop()
-            _stream.destroy()
         if self._device.isValid():
+            for _stream in self._streams:
+                if _stream.isValid():
+                    _stream.stop()
+                    _stream.destroy()
+            self._streams.clear()
+        
             self._device.close()
 
     def __init__(self, uri):
@@ -139,11 +142,13 @@ cdef class Device(object):
         return modes
 
     def close(self):
-        for _stream in self._streams:
-            _stream.stop()
-            _stream.destroy()
-
         if self._device.isValid():
+            for _stream in self._streams:
+                if _stream.isValid():
+                    _stream.stop()
+                    _stream.destroy()
+            self._streams.clear()
+
             self._device.close()
 
 
@@ -165,8 +170,9 @@ cdef class VideoStream(object):
     cdef readonly int fps
 
     def __dealloc__(self):
-        self._stream.stop()
-        self._stream.destroy()
+        if self._stream.isValid():
+            self._stream.stop()
+            self._stream.destroy()
 
     cdef create(self,
                 c_openni2.Device& _device,
@@ -310,11 +316,13 @@ cdef class VideoStream(object):
         return image
 
     def stop(self):
-        self._stream.stop()
+        if self._stream.isValid():
+            self._stream.stop()
 
     def destroy(self):
-        self._stream.stop()
-        self._stream.destroy()
+        if self._stream.isValid():
+            self._stream.stop()
+            self._stream.destroy()
 
     def setMirroring(self, on=True):
         self._stream.setMirroringEnabled(on)
