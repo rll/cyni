@@ -327,6 +327,41 @@ cdef class VideoStream(object):
     def setMirroring(self, on=True):
         self._stream.setMirroringEnabled(on)
 
+    def getMirroring(self):
+        return self._stream.getMirroringEnabled()
+
+    def getAutoExposureEnabled(self):
+        curr_setting = self._stream.getCameraSettings()
+        return curr_setting.getAutoExposureEnabled()
+
+    def setAutoExposureEnabled(self, enabled=True):
+        curr_setting = self._stream.getCameraSettings()
+        curr_setting.setAutoExposureEnabled(enabled)
+
+    def getExposure(self):
+        curr_setting = self._stream.getCameraSettings()
+        return curr_setting.getExposure()
+
+    def setExposure(self, exposure):
+        curr_setting = self._stream.getCameraSettings()
+        curr_setting.setExposure(exposure)
+
+    def getAutoWhiteBalanceEnabled(self):
+        curr_setting = self._stream.getCameraSettings()
+        return curr_setting.getAutoWhiteBalanceEnabled()
+
+    def setAutoWhiteBalanceEnabled(self, enabled=True):
+        curr_setting = self._stream.getCameraSettings()
+        curr_setting.setAutoWhiteBalanceEnabled(enabled)
+
+    def getGain(self):
+        curr_setting = self._stream.getCameraSettings()
+        return curr_setting.getGain()
+
+    def setGain(self, gain):
+        curr_setting = self._stream.getCameraSettings()
+        curr_setting.setGain(gain)
+
     IF HAS_EMITTER_CONTROL == 1:
         def setEmitterState(self, on=True):
             if self._streamType == b"depth":
