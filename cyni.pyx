@@ -139,6 +139,10 @@ cdef class Device(object):
         return modes
 
     def close(self):
+        for _stream in self._streams:
+            _stream.stop()
+            _stream.destroy()
+
         if self._device.isValid():
             self._device.close()
 
