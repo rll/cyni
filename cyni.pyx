@@ -1,3 +1,5 @@
+#cython: boundscheck=False, wraparound=False
+
 from libcpp.string cimport string
 from libcpp.vector cimport vector
 from cython.operator cimport dereference as drf
@@ -8,6 +10,7 @@ include "config.pxi"
 cimport numpy as np
 import numpy as np
 import sys
+from struct import pack, unpack, calcsize
 
 pixelFormats = {
     "rgb": c_openni2.PIXEL_FORMAT_RGB888,
@@ -371,7 +374,7 @@ cdef class VideoStream(object):
 
 cdef _depthMapToPointCloudXYZ(np.ndarray[np.float_t, ndim=3] pointCloud,
                               np.ndarray[np.uint16_t, ndim=2] depthMap,
-                              const VideoStream& depthStream):
+                              VideoStream depthStream):
 
     cdef int rows = depthMap.shape[0]
     cdef int cols = depthMap.shape[1]
@@ -382,12 +385,34 @@ cdef _depthMapToPointCloudXYZ(np.ndarray[np.float_t, ndim=3] pointCloud,
 
     for y in range(rows):
         for x in range(cols):
-            CoordinateConverter::convertDepthToWorld(depthStream,
-                                                     x, y, depthMap[y,x],
-                                                     *worldX, *worldY, *worldZ)
+            c_openni2.convertDepthToWorld(depthStream._stream, x, y, depthMap[y,x],
+                                          &worldX, &worldY, &worldZ)
             pointCloud[y,x,0] = worldX
             pointCloud[y,x,1] = worldY
             pointCloud[y,x,2] = worldZ
+
+cdef _depthMapToPointCloudXYZRGB(np.ndarray[np.float_t, ndim=3] pointCloud,
+                              np.ndarray[np.uint16_t, ndim=2] depthMap,
+                              np.ndarray[np.uint8_t, ndim=3] colorImage,
+                              VideoStream depthStream):
+
+    cdef int rows = depthMap.shape[0]
+    cdef int cols = depthMap.shape[1]
+
+    cdef int row, col
+
+    cdef float worldX, worldY, worldZ
+
+    for y in range(rows):
+        for x in range(cols):
+            c_openni2.convertDepthToWorld(depthStream._stream, x, y, depthMap[y,x],
+                                          &worldX, &worldY, &worldZ)
+            pointCloud[y,x,0] = worldX
+            pointCloud[y,x,1] = worldY
+            pointCloud[y,x,2] = worldZ
+            pointCloud[y,x,3] = colorImage[y,x,0]
+            pointCloud[y,x,4] = colorImage[y,x,1]
+            pointCloud[y,x,5] = colorImage[y,x,2]
 
 def getAnyDevice():
     deviceList = enumerateDevices()
@@ -399,13 +424,60 @@ def depthMapToImage(image):
 def depthMapToPointCloud(depthMap, depthStream, colorImage=None):
     if colorImage is None:
         pointCloud = np.zeros((depthMap.shape[0], depthMap.shape[1], 3))
-        _depthMapToPointCloudXYZ(pointCloud, depthMap, depthStream._stream)
+        _depthMapToPointCloudXYZ(pointCloud, depthMap, depthStream)
         return pointCloud
     else:
         if (colorImage.shape[0] == depthMap.shape[0] and
             colorImage.shape[1] == depthMap.shape[1]):
             pointCloud = np.zeros((depthMap.shape[0], depthMap.shape[1], 6))
-            _depthMapToPointCloudXYZRGB(pointCloud, depthMap, colorImage, depthStream._stream)
+            _depthMapToPointCloudXYZRGB(pointCloud, depthMap, colorImage, depthStream)
             return pointCloud
         else:
             raise Exception("Depth and color images must have save dimensions.")
+
+def writePCD(pointCloud, filename, ascii=False):
+    with open(filename, 'w') as f:
+        height = pointCloud.shape[0]
+        width = pointCloud.shape[1]
+        f.write("# .PCD v.7 - Point Cloud Data file format\n")
+        f.write("VERSION .7\n")
+        if pointCloud.shape[2] == 3:
+            f.write("FIELDS x y z\n")
+            f.write("SIZE 4 4 4\n")
+            f.write("TYPE F F F\n")
+            f.write("COUNT 1 1 1\n")
+        else:
+            f.write("FIELDS x y z rgb\n")
+            f.write("SIZE 4 4 4 4\n")
+            f.write("TYPE F F F F\n")
+            f.write("COUNT 1 1 1 1\n")
+        f.write("WIDTH %d\n" % width)
+        f.write("HEIGHT %d\n" % height)
+        f.write("VIEWPOINT 0 0 0 1 0 0 0\n")
+        f.write("POINTS %d\n" % (height * width))
+        if ascii:
+          f.write("DATA ascii\n")
+        else:
+          f.write("DATA binary\n")
+        for row in range(height):
+            for col in range(width):
+                if pointCloud.shape[2]== 3:
+                    if ascii:
+                      f.write("%f %f %f\n" % tuple(pointCloud[row, col, :]))
+                    else:
+                      f.write("%s %s %s\n" % tuple([pack('f', x) for x in pointCloud[row, col, :]]))
+                else:
+                    if ascii:
+                      f.write("%f %f %f" % tuple(pointCloud[row, col, :3]))
+                    else:
+                      f.write("%s%s%s" % tuple([pack('f', x) for x in pointCloud[row, col, :3]]))
+                    r = int(pointCloud[row, col, 3])
+                    g = int(pointCloud[row, col, 4])
+                    b = int(pointCloud[row, col, 5])
+                    rgb_int = (r << 16) | (g << 8) | b
+                    packed = pack('i', rgb_int)
+                    rgb = unpack('f', packed)[0]
+                    if ascii:
+                      f.write(" %e.12\n" % rgb)
+                    else:
+                      f.write("%s" % packed)
