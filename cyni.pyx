@@ -481,3 +481,75 @@ def writePCD(pointCloud, filename, ascii=False):
                       f.write(" %e.12\n" % rgb)
                     else:
                       f.write("%s" % packed)
+
+def readPCD(filename):
+    with f as open(filename, 'r'):
+        #"# .PCD v.7 - Point Cloud Data file format\n"
+        f.readline()
+
+        #"VERSION .7\n"
+        f.readline()
+
+        # "FIELDS x y z\n"
+        fields = f.readline().strip().split()[1:]
+
+        if len(fields) == 3:
+            rgb = False
+        elif len(fields) == 4:
+            rgb = True
+        else:
+            raise Exception("Unsupported fields: %s" % str(fields))
+
+        #"SIZE 4 4 4\n"
+        sizes = f.readline().strip().split()[1:]
+        pointSize = np.prod(sizes)
+
+        #"TYPE F F F\n"
+        types = f.readline().strip().split()[1:]
+
+        #"COUNT 1 1 1\n"
+        counts = f.readline().strip().split()[1:]
+
+        #"WIDTH %d\n" % width
+        width = int(f.readline().strip().split()[1])
+
+        #"HEIGHT %d\n" % height
+        height = int(f.readline().strip().split()[1])
+
+        #"VIEWPOINT 0 0 0 1 0 0 0\n"
+        viewpoint = np.array(f.readline().strip().split()[1:])
+
+        #"POINTS %d\n" % height * width
+        points = int(f.readline().strip().split()[1])
+
+        #"DATA ascii\n"
+        format = f.readline().strip().split()[1]
+        ascii = format == 'ascii'
+
+        if rgb:
+            pointCloud = np.empty((height, width, 6))
+        else:
+            pointCloud = np.empty((height, width, 3))
+
+        for row in range(height):
+            for col in range(width):
+                if ascii:
+                    data = [float(x) for x in f.readline().strip().split()]
+                else:
+                    data = unpack('ffff', f.read(pointSize))
+
+                pointCloud[row, col, 0] = data[0]
+                pointCloud[row, col, 1] = data[1]
+                pointCloud[row, col, 2] = data[2]
+                if rgb:
+                    rgb_float = data[3]
+                    packed = pack('f', rgb_float)
+                    rgb_int = unpack('i', packed)[0]
+                    r = rgb_int >> 16 & 0x0000ff
+                    g = rgb_int >> 8 & 0x0000ff
+                    b = rgb_int & 0x0000ff
+                    pointCloud[row, col, 3] = r
+                    pointCloud[row, col, 4] = g
+                    pointCloud[row, col, 5] = b
+
+        return pointCloud
