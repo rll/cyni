@@ -478,12 +478,12 @@ def writePCD(pointCloud, filename, ascii=False):
                     packed = pack('i', rgb_int)
                     rgb = unpack('f', packed)[0]
                     if ascii:
-                      f.write(" %e.12\n" % rgb)
+                      f.write(" %.12e\n" % rgb)
                     else:
                       f.write("%s" % packed)
 
 def readPCD(filename):
-    with f as open(filename, 'r'):
+    with open(filename, 'r') as f:
         #"# .PCD v.7 - Point Cloud Data file format\n"
         f.readline()
 
@@ -501,14 +501,14 @@ def readPCD(filename):
             raise Exception("Unsupported fields: %s" % str(fields))
 
         #"SIZE 4 4 4\n"
-        sizes = f.readline().strip().split()[1:]
-        pointSize = np.prod(sizes)
+        sizes = [int(x) for x in f.readline().strip().split()[1:]]
+        pointSize = np.sum(sizes)
 
         #"TYPE F F F\n"
         types = f.readline().strip().split()[1:]
 
         #"COUNT 1 1 1\n"
-        counts = f.readline().strip().split()[1:]
+        counts = [int(x) for x in f.readline().strip().split()[1:]]
 
         #"WIDTH %d\n" % width
         width = int(f.readline().strip().split()[1])
