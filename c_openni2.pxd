@@ -164,42 +164,42 @@ cdef extern from "OpenNI.h" namespace "openni":
         int getGain()
         int getExposure()
 
-    cdef cppclass CoordinateConverter:
-        static Status convertDepthToColor(const VideoStream& depthStream,
-                                          const VideoStream& colorStream,
-                                          int depthX,
-                                          int depthY,
-                                          DepthPixel depthZ,
-                                          int* pColorX,
-                                          int* pColorY)
-        static Status convertDepthToWorld(const VideoStream& depthStream,
-                                          int depthX,
-                                          int depthY,
-                                          DepthPixel depthZ,
-                                          float* pWorldX,
-                                          float* pWorldY,
-                                          float* pWorldZ)
-        static Status	convertDepthToWorld(const VideoStream &depthStream,
-                                          float depthX,
-                                          float depthY,
-                                          float depthZ,
-                                          float *pWorldX,
-                                          float *pWorldY,
-                                          float *pWorldZ)
-        static Status	convertWorldToDepth(const VideoStream &depthStream,
-                                          float worldX,
-                                          float worldY,
-                                          float worldZ,
-                                          int *pDepthX,
-                                          int *pDepthY,
-                                          DepthPixel *pDepthZ)
-        static Status convertWorldToDepth(const VideoStream &depthStream,
-                                          float worldX,
-                                          float worldY,
-                                          float worldZ,
-                                          float *pDepthX,
-                                          float *pDepthY,
-                                          float *pDepthZ)
+cdef extern from "OpenNI.h" namespace "openni::CoordinateConverter":
+     Status convertDepthToColor(const VideoStream& depthStream,
+                                const VideoStream& colorStream,
+                                int depthX,
+                                int depthY,
+                                DepthPixel depthZ,
+                                int* pColorX,
+                                int* pColorY)
+     Status convertDepthToWorld(const VideoStream& depthStream,
+                                int depthX,
+                                int depthY,
+                                DepthPixel depthZ,
+                                float* pWorldX,
+                                float* pWorldY,
+                                float* pWorldZ)
+     Status	convertDepthToWorld(const VideoStream &depthStream,
+                                float depthX,
+                                float depthY,
+                                float depthZ,
+                                float *pWorldX,
+                                float *pWorldY,
+                                float *pWorldZ)
+     Status	convertWorldToDepth(const VideoStream &depthStream,
+                                float worldX,
+                                float worldY,
+                                float worldZ,
+                                int *pDepthX,
+                                int *pDepthY,
+                                DepthPixel *pDepthZ)
+     Status convertWorldToDepth(const VideoStream &depthStream,
+                                float worldX,
+                                float worldY,
+                                float worldZ,
+                                float *pDepthX,
+                                float *pDepthY,
+                                float *pDepthZ)
 
 cdef extern from "OpenNI.h" namespace "openni::OpenNI":
     Status initialize()
