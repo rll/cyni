@@ -369,11 +369,43 @@ cdef class VideoStream(object):
             else:
                 warning("Can only control emitter for depth sensors.")
 
+cdef _depthMapToPointCloudXYZ(np.ndarray[np.float_t, ndim=3] pointCloud,
+                              np.ndarray[np.uint16_t, ndim=2] depthMap,
+                              const VideoStream& depthStream):
+
+    cdef int rows = depthMap.shape[0]
+    cdef int cols = depthMap.shape[1]
+
+    cdef int row, col
+
+    cdef float worldX, worldY, worldZ
+
+    for y in range(rows):
+        for x in range(cols):
+            CoordinateConverter::convertDepthToWorld(depthStream,
+                                                     x, y, depthMap[y,x],
+                                                     *worldX, *worldY, *worldZ)
+            pointCloud[y,x,0] = worldX
+            pointCloud[y,x,1] = worldY
+            pointCloud[y,x,2] = worldZ
 
 def getAnyDevice():
     deviceList = enumerateDevices()
     return Device(deviceList[0]['uri'])
 
-
 def depthMapToImage(image):
     return np.uint8(image / (np.max(image)*1.0/255))
+
+def depthMapToPointCloud(depthMap, depthStream, colorImage=None):
+    if colorImage is None:
+        pointCloud = np.zeros((depthMap.shape[0], depthMap.shape[1], 3))
+        _depthMapToPointCloudXYZ(pointCloud, depthMap, depthStream._stream)
+        return pointCloud
+    else:
+        if (colorImage.shape[0] == depthMap.shape[0] and
+            colorImage.shape[1] == depthMap.shape[1]):
+            pointCloud = np.zeros((depthMap.shape[0], depthMap.shape[1], 6))
+            _depthMapToPointCloudXYZRGB(pointCloud, depthMap, colorImage, depthStream._stream)
+            return pointCloud
+        else:
+            raise Exception("Depth and color images must have save dimensions.")
