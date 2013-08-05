@@ -414,6 +414,24 @@ cdef _depthMapToPointCloudXYZRGB(np.ndarray[np.float_t, ndim=3] pointCloud,
             pointCloud[y,x,4] = colorImage[y,x,1]
             pointCloud[y,x,5] = colorImage[y,x,2]
 
+def registerColorImage(np.ndarray[np.uint16_t, ndim=2] depthMap, np.ndarray[np.uint8_t, ndim=3] colorImageIn, VideoStream depthStream, VideoStream colorStream):
+  cdef int rows = depthMap.shape[0]
+  cdef int cols = depthMap.shape[1]
+
+  cdef int row, col, colorX, colorY
+  cdef np.ndarray[np.uint8_t, ndim=3] colorImageOut = np.zeros((colorImageIn.shape[0], colorImageIn.shape[1], 3), dtype=np.uint8)
+
+  for y in range(rows):
+    for x in range(cols):
+      c_openni2.convertDepthToColor(depthStream._stream, colorStream._stream, x, y, depthMap[y,x], &colorX, &colorY)
+      if colorX >= 0 and colorX < 1280 and colorY >= 0 and colorY < 980:
+          a = colorImageIn[colorY, colorX, 0]
+          colorImageOut[y, x, 0] = colorImageIn[colorY, colorX, 0]
+          colorImageOut[y, x, 1] = colorImageIn[colorY, colorX, 1]
+          colorImageOut[y, x, 2] = colorImageIn[colorY, colorX, 2]
+ 
+  return colorImageOut
+
 def getAnyDevice():
     deviceList = enumerateDevices()
     return Device(deviceList[0]['uri'])
@@ -457,31 +475,43 @@ def writePCD(pointCloud, filename, ascii=False):
         f.write("POINTS %d\n" % (height * width))
         if ascii:
           f.write("DATA ascii\n")
-        else:
-          f.write("DATA binary\n")
-        for row in range(height):
+          for row in range(height):
             for col in range(width):
                 if pointCloud.shape[2]== 3:
-                    if ascii:
-                      f.write("%f %f %f\n" % tuple(pointCloud[row, col, :]))
-                    else:
-                      f.write("%s %s %s\n" % tuple([pack('f', x) for x in pointCloud[row, col, :]]))
+                    f.write("%f %f %f\n" % tuple(pointCloud[row, col, :]))
                 else:
-                    if ascii:
-                      f.write("%f %f %f" % tuple(pointCloud[row, col, :3]))
-                    else:
-                      f.write("%s%s%s" % tuple([pack('f', x) for x in pointCloud[row, col, :3]]))
+                    f.write("%f %f %f" % tuple(pointCloud[row, col, :3]))
                     r = int(pointCloud[row, col, 3])
                     g = int(pointCloud[row, col, 4])
                     b = int(pointCloud[row, col, 5])
                     rgb_int = (r << 16) | (g << 8) | b
                     packed = pack('i', rgb_int)
                     rgb = unpack('f', packed)[0]
-                    if ascii:
-                      f.write(" %.12e\n" % rgb)
-                    else:
-                      f.write("%s" % packed)
-
+                    f.write(" %.12e\n" % rgb)
+        else:
+          f.write("DATA binary\n")
+          if pointCloud.shape[2] == 6:
+              dt = np.dtype([('x', np.float32),
+                             ('y', np.float32),
+                             ('z', np.float32),
+                             ('b', np.uint8),
+                             ('g', np.uint8),
+                             ('r', np.uint8),
+                             ('I', np.uint8)])
+              pointCloud_tmp = np.zeros((6, height*width, 1), dtype=dt)
+              for i, k in enumerate(['x', 'y', 'z', 'r', 'g', 'b']):
+                  pointCloud_tmp[k] = pointCloud[:, :, i].reshape((height*width, 1))
+              pointCloud_tmp.tofile(f)
+          else:
+              dt = np.dtype([('x', np.float32),
+                             ('y', np.float32),
+                             ('z', np.float32),
+                             ('I', np.uint8)])
+              pointCloud_tmp = np.zeros((3, height*width, 1), dtype=dt)
+              for i, k in enumerate(['x', 'y', 'z']):
+                  pointCloud_tmp[k] = pointCloud[:, :, i].reshape((height*width, 1))
+              pointCloud_tmp.tofile(f)
+        
 def readPCD(filename):
     with open(filename, 'r') as f:
         #"# .PCD v.7 - Point Cloud Data file format\n"
