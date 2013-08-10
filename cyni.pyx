@@ -57,7 +57,7 @@ def enumerateDevices():
 cdef class Device(object):
 
     cdef c_openni2.Device _device
-    cdef bytes _uri
+    cdef const char* _uri
     cdef vector[c_openni2.VideoStream*] _streams
 
     def __dealloc__(self):
@@ -74,7 +74,8 @@ cdef class Device(object):
         self._uri = uri
 
     def open(self, syncFrames=None):
-        self._device.open(self._uri)
+        with nogil:
+            self._device.open(self._uri)
         if syncFrames is not None:
             self.setDepthColorSyncEnabled(syncFrames)
 
@@ -185,12 +186,15 @@ cdef class VideoStream(object):
                 fps,
                 pixelFormat):
 
+        cdef c_openni2.Status status
+
         self._streamType = streamType
 
-        if self._streamType == b"color":
-            status = self._stream.create(_device, c_openni2.SENSOR_COLOR)
-        elif self._streamType == b"depth":
-            status = self._stream.create(_device, c_openni2.SENSOR_DEPTH)
+        with nogil:
+            if self._streamType == b"color":
+                status = self._stream.create(_device, c_openni2.SENSOR_COLOR)
+            elif self._streamType == b"depth":
+                status = self._stream.create(_device, c_openni2.SENSOR_DEPTH)
 
         if status != c_openni2.STATUS_OK:
             error("Error opening %s stream." % self.streamType)
@@ -256,12 +260,13 @@ cdef class VideoStream(object):
             self.destroy()
 
     def start(self):
-        status = self._stream.start()
+        cdef c_openni2.Status status
+        with nogil:
+            status = self._stream.start()
         if status != c_openni2.STATUS_OK:
             error("Error starting %s stream." % self.streamType)
             self.destroy()
-            return False
-        return True
+        return status == c_openni2.STATUS_OK
 
     def readFrame(self):
         if not self._stream.isValid():
@@ -319,8 +324,9 @@ cdef class VideoStream(object):
         return image
 
     def stop(self):
-        if self._stream.isValid():
-            self._stream.stop()
+        with nogil:
+            if self._stream.isValid():
+                self._stream.stop()
 
     def destroy(self):
         if self._stream.isValid():
@@ -413,6 +419,29 @@ cdef _depthMapToPointCloudXYZRGB(np.ndarray[np.float_t, ndim=3] pointCloud,
             pointCloud[y,x,3] = colorImage[y,x,0]
             pointCloud[y,x,4] = colorImage[y,x,1]
             pointCloud[y,x,5] = colorImage[y,x,2]
+
+def registerDepthMap(np.ndarray[np.uint16_t, ndim=2] depthMapIn, np.ndarray[np.uint8_t, ndim=3] colorImage, VideoStream depthStream, VideoStream colorStream):
+  cdef int rows = depthMapIn.shape[0]
+  cdef int cols = depthMapIn.shape[1]
+  cdef int colorRows = colorImage.shape[0]
+  cdef int colorCols = colorImage.shape[1]
+
+  if colorCols != cols or colorRows != rows:
+    error("Registration doesn't work if depth + color are of different shape")
+    return None
+
+  cdef int x, y, colorX, colorY
+  cdef np.ndarray[np.uint16_t, ndim=2] depthMapOut = np.zeros((depthMapIn.shape[0], depthMapIn.shape[1]), dtype=np.uint16)
+
+  for y in range(rows):
+    for x in range(cols):
+      colorX = -1
+      colorY = -1
+      c_openni2.convertDepthToColor(depthStream._stream, colorStream._stream, x, y, depthMapIn[y,x], &colorX, &colorY)
+      if colorX > 0 and colorY > 0:
+        depthMapOut[colorY, colorX] = depthMapIn[y, x]
+ 
+  return depthMapOut
 
 def getAnyDevice():
     deviceList = enumerateDevices()

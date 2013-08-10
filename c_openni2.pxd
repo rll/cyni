@@ -86,7 +86,7 @@ cdef extern from "OpenNI.h" namespace "openni":
 
     cdef cppclass Device:
         Device()
-        Status open(const char*)
+        Status open(const char*) nogil
         void close()
         const DeviceInfo& getDeviceInfo() const
         bool hasSensor(SensorType)
@@ -106,14 +106,14 @@ cdef extern from "OpenNI.h" namespace "openni":
     cdef cppclass VideoStream:
             VideoStream()
 
-            bool isValid() const
-            Status create(const Device& device, SensorType sensorType)
+            bool isValid() nogil const
+            Status create(const Device& device, SensorType sensorType) nogil
             inline void destroy()
 
             const SensorInfo& getSensorInfo() const
 
-            Status start()
-            void stop()
+            Status start() nogil
+            void stop() nogil
 
             Status readFrame(VideoFrameRef* pFrame)
             CameraSettings* getCameraSettings()
