@@ -264,7 +264,7 @@ cdef class VideoStream(object):
         with nogil:
             status = self._stream.start()
         if status != c_openni2.STATUS_OK:
-            error("Error starting %s stream." % self.streamType)
+            error("Error starting %s stream." % self._streamType)
             self.destroy()
         return status == c_openni2.STATUS_OK
 
