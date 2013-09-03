@@ -57,7 +57,7 @@ def enumerateDevices():
 cdef class Device(object):
 
     cdef c_openni2.Device _device
-    cdef bytes _uri
+    cdef const char* _uri
     cdef vector[c_openni2.VideoStream*] _streams
 
     def __dealloc__(self):
@@ -74,7 +74,8 @@ cdef class Device(object):
         self._uri = uri
 
     def open(self, syncFrames=None):
-        self._device.open(self._uri)
+        with nogil:
+            self._device.open(self._uri)
         if syncFrames is not None:
             self.setDepthColorSyncEnabled(syncFrames)
 
@@ -130,6 +131,8 @@ cdef class Device(object):
             _info = self._device.getSensorInfo(c_openni2.SENSOR_COLOR)
         elif sensorType == "depth":
             _info = self._device.getSensorInfo(c_openni2.SENSOR_DEPTH)
+        elif sensorType == "ir":
+            _info = self._device.getSensorInfo(c_openni2.SENSOR_IR)
         else:
             return []
         cdef const c_openni2.Array[c_openni2.VideoMode]* _modes
@@ -148,12 +151,11 @@ cdef class Device(object):
         if self._device.isValid():
             for _stream in self._streams:
                 if _stream.isValid():
-                    _stream.stop()
+                    with nogil:
+                        _stream.stop()
                     _stream.destroy()
             self._streams.clear()
-
             self._device.close()
-
 
 class Frame(object):
     def __init__(self, data, metadata, sensorType):
@@ -185,12 +187,17 @@ cdef class VideoStream(object):
                 fps,
                 pixelFormat):
 
+        cdef c_openni2.Status status
+
         self._streamType = streamType
 
-        if self._streamType == b"color":
-            status = self._stream.create(_device, c_openni2.SENSOR_COLOR)
-        elif self._streamType == b"depth":
-            status = self._stream.create(_device, c_openni2.SENSOR_DEPTH)
+        with nogil:
+            if self._streamType == b"color":
+                status = self._stream.create(_device, c_openni2.SENSOR_COLOR)
+            elif self._streamType == b"depth":
+                status = self._stream.create(_device, c_openni2.SENSOR_DEPTH)
+            elif self._streamType == b"ir":
+                status = self._stream.create(_device, c_openni2.SENSOR_IR)
 
         if status != c_openni2.STATUS_OK:
             error("Error opening %s stream." % self.streamType)
@@ -256,12 +263,13 @@ cdef class VideoStream(object):
             self.destroy()
 
     def start(self):
-        status = self._stream.start()
+        cdef c_openni2.Status status
+        with nogil:
+            status = self._stream.start()
         if status != c_openni2.STATUS_OK:
             error("Error starting %s stream." % self.streamType)
             self.destroy()
-            return False
-        return True
+        return status == c_openni2.STATUS_OK
 
     def readFrame(self):
         if not self._stream.isValid():
@@ -269,7 +277,8 @@ cdef class VideoStream(object):
             return None
 
         cdef c_openni2.VideoFrameRef _frame
-        self._stream.readFrame(&_frame)
+        with nogil:
+            self._stream.readFrame(&_frame)
         if not _frame.isValid():
             error("Invalid frame read.")
             return None
@@ -293,9 +302,13 @@ cdef class VideoStream(object):
         elif self._streamType == b"depth":
             data = self.convertDepthFrame(_frame)
             return Frame(data, metadata, self._streamType)
+        elif self._streamType == b"ir":
+            data = self.convertIRFrame(_frame)
+            return Frame(data, metadata, self._streamType)
 
     cdef convertRGBFrame(self, c_openni2.VideoFrameRef _frame):
-        _imageData = <const c_openni2.RGB888Pixel*> _frame.getData()
+        with nogil:
+            _imageData = <const c_openni2.RGB888Pixel*> _frame.getData()
         cdef np.ndarray[np.uint8_t, ndim=3] image
         image = np.empty((self.height, self.width, 3), dtype=np.uint8)
         cdef x, y
@@ -306,6 +319,18 @@ cdef class VideoStream(object):
                 image[y, x, 0] = _pixel.r
                 image[y, x, 1] = _pixel.g
                 image[y, x, 2] = _pixel.b
+        return image
+
+    cdef convertIRFrame(self, c_openni2.VideoFrameRef _frame):
+        _imageData = <const c_openni2.Grayscale16Pixel*> _frame.getData()
+        cdef np.ndarray[np.uint16_t, ndim=2] image
+        image = np.empty((self.height, self.width), dtype=np.uint16)
+        cdef x, y
+        for y in range(self.height):
+            for x in range(self.width):
+                index = y*self.width + x
+                _pixel = <const c_openni2.Grayscale16Pixel> _imageData[index]
+                image[y, x] = _pixel
         return image
 
     cdef convertDepthFrame(self, c_openni2.VideoFrameRef _frame):
@@ -319,12 +344,14 @@ cdef class VideoStream(object):
         return image
 
     def stop(self):
-        if self._stream.isValid():
-            self._stream.stop()
+        with nogil:
+            if self._stream.isValid():
+                self._stream.stop()
 
     def destroy(self):
         if self._stream.isValid():
-            self._stream.stop()
+            with nogil:
+                self._stream.stop()
             self._stream.destroy()
 
     def setMirroring(self, on=True):
@@ -367,7 +394,7 @@ cdef class VideoStream(object):
 
     IF HAS_EMITTER_CONTROL == 1:
         def setEmitterState(self, on=True):
-            if self._streamType == b"depth":
+            if self._streamType == b"depth" or self._streamType == b"ir":
                 self._stream.setEmitterEnabled(on)
             else:
                 warning("Can only control emitter for depth sensors.")
@@ -414,23 +441,28 @@ cdef _depthMapToPointCloudXYZRGB(np.ndarray[np.float_t, ndim=3] pointCloud,
             pointCloud[y,x,4] = colorImage[y,x,1]
             pointCloud[y,x,5] = colorImage[y,x,2]
 
-def registerColorImage(np.ndarray[np.uint16_t, ndim=2] depthMap, np.ndarray[np.uint8_t, ndim=3] colorImageIn, VideoStream depthStream, VideoStream colorStream):
-  cdef int rows = depthMap.shape[0]
-  cdef int cols = depthMap.shape[1]
+def registerDepthMap(np.ndarray[np.uint16_t, ndim=2] depthMapIn, np.ndarray[np.uint8_t, ndim=3] colorImage, VideoStream depthStream, VideoStream colorStream):
+  cdef int rows = depthMapIn.shape[0]
+  cdef int cols = depthMapIn.shape[1]
+  cdef int colorRows = colorImage.shape[0]
+  cdef int colorCols = colorImage.shape[1]
 
-  cdef int row, col, colorX, colorY
-  cdef np.ndarray[np.uint8_t, ndim=3] colorImageOut = np.zeros((colorImageIn.shape[0], colorImageIn.shape[1], 3), dtype=np.uint8)
+  if colorCols != cols or colorRows != rows:
+    error("Registration doesn't work if depth + color are of different shape")
+    return None
+
+  cdef int x, y, colorX, colorY
+  cdef np.ndarray[np.uint16_t, ndim=2] depthMapOut = np.zeros((depthMapIn.shape[0], depthMapIn.shape[1]), dtype=np.uint16)
 
   for y in range(rows):
     for x in range(cols):
-      c_openni2.convertDepthToColor(depthStream._stream, colorStream._stream, x, y, depthMap[y,x], &colorX, &colorY)
-      if colorX >= 0 and colorX < 1280 and colorY >= 0 and colorY < 980:
-          a = colorImageIn[colorY, colorX, 0]
-          colorImageOut[y, x, 0] = colorImageIn[colorY, colorX, 0]
-          colorImageOut[y, x, 1] = colorImageIn[colorY, colorX, 1]
-          colorImageOut[y, x, 2] = colorImageIn[colorY, colorX, 2]
+      colorX = -1
+      colorY = -1
+      c_openni2.convertDepthToColor(depthStream._stream, colorStream._stream, x, y, depthMapIn[y,x], &colorX, &colorY)
+      if colorX > 0 and colorY > 0:
+        depthMapOut[colorY, colorX] = depthMapIn[y, x]
  
-  return colorImageOut
+  return depthMapOut
 
 def getAnyDevice():
     deviceList = enumerateDevices()
@@ -511,7 +543,7 @@ def writePCD(pointCloud, filename, ascii=False):
               for i, k in enumerate(['x', 'y', 'z']):
                   pointCloud_tmp[k] = pointCloud[:, :, i].reshape((height*width, 1))
               pointCloud_tmp.tofile(f)
-        
+ 
 def readPCD(filename):
     with open(filename, 'r') as f:
         #"# .PCD v.7 - Point Cloud Data file format\n"
