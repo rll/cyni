@@ -115,7 +115,7 @@ cdef extern from "OpenNI.h" namespace "openni":
             Status start() nogil
             void stop() nogil
 
-            Status readFrame(VideoFrameRef* pFrame)
+            Status readFrame(VideoFrameRef* pFrame) nogil
             CameraSettings* getCameraSettings()
 
             VideoMode getVideoMode() const
@@ -140,7 +140,7 @@ cdef extern from "OpenNI.h" namespace "openni":
     cdef cppclass VideoFrameRef:
         VideoFrameRef()
         int getDataSize() const
-        const void* getData() const
+        const void* getData() nogil const
         SensorType getSensorType() const
         const VideoMode& getVideoMode() const
         uint64_t getTimestamp() const

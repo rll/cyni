@@ -131,6 +131,8 @@ cdef class Device(object):
             _info = self._device.getSensorInfo(c_openni2.SENSOR_COLOR)
         elif sensorType == "depth":
             _info = self._device.getSensorInfo(c_openni2.SENSOR_DEPTH)
+        elif sensorType == "ir":
+            _info = self._device.getSensorInfo(c_openni2.SENSOR_IR)
         else:
             return []
         cdef const c_openni2.Array[c_openni2.VideoMode]* _modes
@@ -149,12 +151,11 @@ cdef class Device(object):
         if self._device.isValid():
             for _stream in self._streams:
                 if _stream.isValid():
-                    _stream.stop()
+                    with nogil:
+                        _stream.stop()
                     _stream.destroy()
             self._streams.clear()
-
             self._device.close()
-
 
 class Frame(object):
     def __init__(self, data, metadata, sensorType):
@@ -195,6 +196,8 @@ cdef class VideoStream(object):
                 status = self._stream.create(_device, c_openni2.SENSOR_COLOR)
             elif self._streamType == b"depth":
                 status = self._stream.create(_device, c_openni2.SENSOR_DEPTH)
+            elif self._streamType == b"ir":
+                status = self._stream.create(_device, c_openni2.SENSOR_IR)
 
         if status != c_openni2.STATUS_OK:
             error("Error opening %s stream." % self.streamType)
@@ -274,7 +277,8 @@ cdef class VideoStream(object):
             return None
 
         cdef c_openni2.VideoFrameRef _frame
-        self._stream.readFrame(&_frame)
+        with nogil:
+            self._stream.readFrame(&_frame)
         if not _frame.isValid():
             error("Invalid frame read.")
             return None
@@ -298,9 +302,13 @@ cdef class VideoStream(object):
         elif self._streamType == b"depth":
             data = self.convertDepthFrame(_frame)
             return Frame(data, metadata, self._streamType)
+        elif self._streamType == b"ir":
+            data = self.convertIRFrame(_frame)
+            return Frame(data, metadata, self._streamType)
 
     cdef convertRGBFrame(self, c_openni2.VideoFrameRef _frame):
-        _imageData = <const c_openni2.RGB888Pixel*> _frame.getData()
+        with nogil:
+            _imageData = <const c_openni2.RGB888Pixel*> _frame.getData()
         cdef np.ndarray[np.uint8_t, ndim=3] image
         image = np.empty((self.height, self.width, 3), dtype=np.uint8)
         cdef x, y
@@ -311,6 +319,18 @@ cdef class VideoStream(object):
                 image[y, x, 0] = _pixel.r
                 image[y, x, 1] = _pixel.g
                 image[y, x, 2] = _pixel.b
+        return image
+
+    cdef convertIRFrame(self, c_openni2.VideoFrameRef _frame):
+        _imageData = <const c_openni2.Grayscale16Pixel*> _frame.getData()
+        cdef np.ndarray[np.uint16_t, ndim=2] image
+        image = np.empty((self.height, self.width), dtype=np.uint16)
+        cdef x, y
+        for y in range(self.height):
+            for x in range(self.width):
+                index = y*self.width + x
+                _pixel = <const c_openni2.Grayscale16Pixel> _imageData[index]
+                image[y, x] = _pixel
         return image
 
     cdef convertDepthFrame(self, c_openni2.VideoFrameRef _frame):
@@ -330,7 +350,8 @@ cdef class VideoStream(object):
 
     def destroy(self):
         if self._stream.isValid():
-            self._stream.stop()
+            with nogil:
+                self._stream.stop()
             self._stream.destroy()
 
     def setMirroring(self, on=True):
@@ -373,7 +394,7 @@ cdef class VideoStream(object):
 
     IF HAS_EMITTER_CONTROL == 1:
         def setEmitterState(self, on=True):
-            if self._streamType == b"depth":
+            if self._streamType == b"depth" or self._streamType == b"ir":
                 self._stream.setEmitterEnabled(on)
             else:
                 warning("Can only control emitter for depth sensors.")
@@ -486,31 +507,43 @@ def writePCD(pointCloud, filename, ascii=False):
         f.write("POINTS %d\n" % (height * width))
         if ascii:
           f.write("DATA ascii\n")
-        else:
-          f.write("DATA binary\n")
-        for row in range(height):
+          for row in range(height):
             for col in range(width):
                 if pointCloud.shape[2]== 3:
-                    if ascii:
-                      f.write("%f %f %f\n" % tuple(pointCloud[row, col, :]))
-                    else:
-                      f.write("%s %s %s\n" % tuple([pack('f', x) for x in pointCloud[row, col, :]]))
+                    f.write("%f %f %f\n" % tuple(pointCloud[row, col, :]))
                 else:
-                    if ascii:
-                      f.write("%f %f %f" % tuple(pointCloud[row, col, :3]))
-                    else:
-                      f.write("%s%s%s" % tuple([pack('f', x) for x in pointCloud[row, col, :3]]))
+                    f.write("%f %f %f" % tuple(pointCloud[row, col, :3]))
                     r = int(pointCloud[row, col, 3])
                     g = int(pointCloud[row, col, 4])
                     b = int(pointCloud[row, col, 5])
                     rgb_int = (r << 16) | (g << 8) | b
                     packed = pack('i', rgb_int)
                     rgb = unpack('f', packed)[0]
-                    if ascii:
-                      f.write(" %.12e\n" % rgb)
-                    else:
-                      f.write("%s" % packed)
-
+                    f.write(" %.12e\n" % rgb)
+        else:
+          f.write("DATA binary\n")
+          if pointCloud.shape[2] == 6:
+              dt = np.dtype([('x', np.float32),
+                             ('y', np.float32),
+                             ('z', np.float32),
+                             ('b', np.uint8),
+                             ('g', np.uint8),
+                             ('r', np.uint8),
+                             ('I', np.uint8)])
+              pointCloud_tmp = np.zeros((6, height*width, 1), dtype=dt)
+              for i, k in enumerate(['x', 'y', 'z', 'r', 'g', 'b']):
+                  pointCloud_tmp[k] = pointCloud[:, :, i].reshape((height*width, 1))
+              pointCloud_tmp.tofile(f)
+          else:
+              dt = np.dtype([('x', np.float32),
+                             ('y', np.float32),
+                             ('z', np.float32),
+                             ('I', np.uint8)])
+              pointCloud_tmp = np.zeros((3, height*width, 1), dtype=dt)
+              for i, k in enumerate(['x', 'y', 'z']):
+                  pointCloud_tmp[k] = pointCloud[:, :, i].reshape((height*width, 1))
+              pointCloud_tmp.tofile(f)
+ 
 def readPCD(filename):
     with open(filename, 'r') as f:
         #"# .PCD v.7 - Point Cloud Data file format\n"
