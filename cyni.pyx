@@ -415,7 +415,7 @@ cdef _depthMapToPointCloudXYZ(np.ndarray[np.float_t, ndim=3] pointCloud,
             c_openni2.convertDepthToWorld(depthStream._stream, x, y, depthMap[y,x],
                                           &worldX, &worldY, &worldZ)
             pointCloud[y,x,0] = worldX
-            pointCloud[y,x,1] = worldY
+            pointCloud[y,x,1] = -worldY
             pointCloud[y,x,2] = worldZ
 
 cdef _depthMapToPointCloudXYZRGB(np.ndarray[np.float_t, ndim=3] pointCloud,
@@ -435,11 +435,34 @@ cdef _depthMapToPointCloudXYZRGB(np.ndarray[np.float_t, ndim=3] pointCloud,
             c_openni2.convertDepthToWorld(depthStream._stream, x, y, depthMap[y,x],
                                           &worldX, &worldY, &worldZ)
             pointCloud[y,x,0] = worldX
-            pointCloud[y,x,1] = worldY
+            pointCloud[y,x,1] = -worldY
             pointCloud[y,x,2] = worldZ
             pointCloud[y,x,3] = colorImage[y,x,0]
             pointCloud[y,x,4] = colorImage[y,x,1]
             pointCloud[y,x,5] = colorImage[y,x,2]
+
+cdef _depthMapToPointCloudXYZRGB_IR(np.ndarray[np.float_t, ndim=3] pointCloud,
+                                    np.ndarray[np.uint16_t, ndim=2] depthMap,
+                                    np.ndarray[np.uint16_t, ndim=2] irImage,
+                                    VideoStream depthStream):
+
+    cdef int rows = depthMap.shape[0]
+    cdef int cols = depthMap.shape[1]
+
+    cdef int row, col, x, y
+
+    cdef float worldX, worldY, worldZ
+
+    for y in range(rows):
+        for x in range(cols):
+            c_openni2.convertDepthToWorld(depthStream._stream, x, y, depthMap[y,x],
+                                          &worldX, &worldY, &worldZ)
+            pointCloud[y,x,0] = worldX
+            pointCloud[y,x,1] = -worldY
+            pointCloud[y,x,2] = worldZ
+            pointCloud[y,x,3] = irImage[y,x]
+            pointCloud[y,x,4] = irImage[y,x]
+            pointCloud[y,x,5] = irImage[y,x]
 
 def registerDepthMap(np.ndarray[np.uint16_t, ndim=2] depthMapIn, np.ndarray[np.uint8_t, ndim=3] colorImage, VideoStream depthStream, VideoStream colorStream):
   cdef int rows = depthMapIn.shape[0]
@@ -480,7 +503,10 @@ def depthMapToPointCloud(depthMap, depthStream, colorImage=None):
         if (colorImage.shape[0] == depthMap.shape[0] and
             colorImage.shape[1] == depthMap.shape[1]):
             pointCloud = np.zeros((depthMap.shape[0], depthMap.shape[1], 6))
-            _depthMapToPointCloudXYZRGB(pointCloud, depthMap, colorImage, depthStream)
+            if len(colorImage.shape) == 3:
+              _depthMapToPointCloudXYZRGB(pointCloud, depthMap, colorImage, depthStream)
+            else:
+              _depthMapToPointCloudXYZRGB_IR(pointCloud, depthMap, colorImage, depthStream)
             return pointCloud
         else:
             raise Exception("Depth and color images must have save dimensions.")
