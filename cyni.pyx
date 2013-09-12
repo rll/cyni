@@ -292,26 +292,34 @@ cdef class VideoStream(object):
         metadata["timestamp"] = _frame.getTimestamp()
         metadata["frameIndex"] = _frame.getFrameIndex()
 
+        cdef np.ndarray[np.uint8_t, ndim=3] _data3D
+        cdef np.ndarray[np.uint16_t, ndim=2] _data2D
+
         if self._streamType == b"color":
             if self._pixelFormat == b"rgb":
-                data = self.convertRGBFrame(_frame)
-                return Frame(data, metadata, self._streamType)
+                _data3D = np.empty((self.height, self.width, 3), dtype=np.uint8)
+                self.convertRGBFrame(_frame, _data3D)
+                return Frame(_data3D, metadata, self._streamType)
             else:
                 error("Only RGB currently supported for color streams.")
                 return None
         elif self._streamType == b"depth":
-            data = self.convertDepthFrame(_frame)
-            return Frame(data, metadata, self._streamType)
+            _data2D = np.empty((self.height, self.width), dtype=np.uint16)
+            self.convertDepthFrame(_frame, _data2D)
+            return Frame(_data2D, metadata, self._streamType)
         elif self._streamType == b"ir":
-            data = self.convertIRFrame(_frame)
-            return Frame(data, metadata, self._streamType)
+            _data2D = np.empty((self.height, self.width), dtype=np.uint16)
+            self.convertIRFrame(_frame, _data2D)
+            return Frame(_data2D, metadata, self._streamType)
 
-    cdef convertRGBFrame(self, c_openni2.VideoFrameRef _frame):
-        with nogil:
-            _imageData = <const c_openni2.RGB888Pixel*> _frame.getData()
-        cdef np.ndarray[np.uint8_t, ndim=3] image
-        image = np.empty((self.height, self.width, 3), dtype=np.uint8)
-        cdef x, y
+    cdef void convertRGBFrame(self, c_openni2.VideoFrameRef _frame, np.uint8_t[:,:,:] image) nogil:
+
+        _imageData = <const c_openni2.RGB888Pixel*> _frame.getData()
+
+        cdef int x, y, index
+
+        cdef c_openni2.RGB888Pixel _pixel
+
         for y in range(self.height):
             for x in range(self.width):
                 index = y*self.width + x
@@ -319,29 +327,23 @@ cdef class VideoStream(object):
                 image[y, x, 0] = _pixel.r
                 image[y, x, 1] = _pixel.g
                 image[y, x, 2] = _pixel.b
-        return image
 
-    cdef convertIRFrame(self, c_openni2.VideoFrameRef _frame):
+    cdef void convertIRFrame(self, c_openni2.VideoFrameRef _frame, np.uint16_t[:,:] image) nogil:
         _imageData = <const c_openni2.Grayscale16Pixel*> _frame.getData()
-        cdef np.ndarray[np.uint16_t, ndim=2] image
-        image = np.empty((self.height, self.width), dtype=np.uint16)
-        cdef x, y
+        cdef int x, y
+        cdef c_openni2.Grayscale16Pixel _pixel
         for y in range(self.height):
             for x in range(self.width):
                 index = y*self.width + x
                 _pixel = <const c_openni2.Grayscale16Pixel> _imageData[index]
                 image[y, x] = _pixel
-        return image
 
-    cdef convertDepthFrame(self, c_openni2.VideoFrameRef _frame):
+    cdef void convertDepthFrame(self, c_openni2.VideoFrameRef _frame, np.uint16_t[:,:] image) nogil:
         _imageData = <const c_openni2.DepthPixel*> _frame.getData()
-        cdef np.ndarray[np.uint16_t, ndim=2] image
-        image = np.empty((self.height, self.width), dtype=np.uint16)
-        cdef x, y
+        cdef int x, y
         for y in range(self.height):
             for x in range(self.width):
                 image[y, x] = _imageData[y*self.width + x]
-        return image
 
     def stop(self):
         with nogil:
@@ -391,6 +393,12 @@ cdef class VideoStream(object):
     def setGain(self, gain):
         curr_setting = self._stream.getCameraSettings()
         curr_setting.setGain(gain)
+
+    def getHorizontalFieldOfView(self):
+      return self._stream.getHorizontalFieldOfView()
+
+    def getVerticalFieldOfView(self):
+      return self._stream.getVerticalFieldOfView()
 
     IF HAS_EMITTER_CONTROL == 1:
         def setEmitterState(self, on=True):
@@ -552,9 +560,9 @@ def writePCD(pointCloud, filename, ascii=False):
               dt = np.dtype([('x', np.float32),
                              ('y', np.float32),
                              ('z', np.float32),
-                             ('b', np.uint8),
-                             ('g', np.uint8),
                              ('r', np.uint8),
+                             ('g', np.uint8),
+                             ('b', np.uint8),
                              ('I', np.uint8)])
               pointCloud_tmp = np.zeros((6, height*width, 1), dtype=dt)
               for i, k in enumerate(['x', 'y', 'z', 'r', 'g', 'b']):
