@@ -132,7 +132,7 @@ cdef extern from "OpenNI.h" namespace "openni":
             bool getMirroringEnabled() const
             Status setMirroringEnabled(bool isEnabled)
 
-            Status setEmitterEnabled(bool isEnabled)
+            Status setEmitterEnabled(bool isEnabled) nogil
 
             float getHorizontalFieldOfView() const
             float getVerticalFieldOfView() const

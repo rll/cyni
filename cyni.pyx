@@ -2,6 +2,7 @@
 
 from libcpp.string cimport string
 from libcpp.vector cimport vector
+from libcpp cimport bool
 from cython.operator cimport dereference as drf
 from cython cimport sizeof
 cimport c_openni2
@@ -28,7 +29,6 @@ class OpenNIException(Exception):
 
 def warning(*args):
     sys.stderr.write("Warning: " + ' '.join(map(str, args)) + '\n')
-
 
 def error(*args):
     #sys.stderr.write(' '.join(map(str,args)) + '\n')
@@ -401,11 +401,10 @@ cdef class VideoStream(object):
       return self._stream.getVerticalFieldOfView()
 
     IF HAS_EMITTER_CONTROL == 1:
-        def setEmitterState(self, on=True):
-            if self._streamType == b"depth" or self._streamType == b"ir":
-                self._stream.setEmitterEnabled(on)
-            else:
-                warning("Can only control emitter for depth sensors.")
+        cpdef setEmitterState(self, bool on=True):
+            with nogil:
+                if self._streamType == b"depth" or self._streamType == b"ir":
+                    self._stream.setEmitterEnabled(on)
 
 cdef _depthMapToPointCloudXYZ(np.ndarray[np.float_t, ndim=3] pointCloud,
                               np.ndarray[np.uint16_t, ndim=2] depthMap,
